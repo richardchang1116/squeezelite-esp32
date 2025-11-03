@@ -6,11 +6,11 @@ on:
   push:
     branches: 
       - 'master-cmake'
-      - '!**4.3'
+      - '!**4.4'
   pull_request:
     branches:
       - 'master-cmake'
-      - '!**4.3'
+      - '!**4.4'
 jobs:
   job1:
     name: Build Number
