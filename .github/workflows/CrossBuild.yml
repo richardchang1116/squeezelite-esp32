@@ -2,41 +2,56 @@ name: Cross-Build
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - 'master-cmake'
-      - '!**4.4'
-  pull_request:
-    branches:
-      - 'master-cmake'
-      - '!**4.4'
 
 jobs:
-  job1:
-    name: Build Number
-    runs-on: ubuntu-latest
-    outputs:
-      build_number: ${{ steps.buildnumber.outputs.build_number }}
-    steps:
-      - name: Generate common build number
-        id: buildnumber
-        uses: einaregilsson/build-number@v3
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
   build:
     runs-on: ubuntu-latest
-    needs: job1
+
     strategy:
-      max-parallel: 1
       matrix:
-        node: [I2S-4MFlash, SqueezeAmp, Muse]
-        depth: [16, 32]
-        exclude:
-          - node: Muse
-            depth: 32
+        idf_ver: [v4.4.4]
+        target: [esp32s3]
+        flash: [4MFlash]
+        partition: [16]
+
     steps:
-      - name: Set target name
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Cache ESP-IDF
+        uses: actions/cache@v4
+        with:
+          path: ~/.espressif
+          key: ${{ runner.os }}-espidf-${{ matrix.idf_ver }}
+          restore-keys: |
+            ${{ runner.os }}-espidf-
+
+      - name: Install ESP-IDF
         run: |
-          echo "TARGET_BUILD_NAME=${{ matrix.node }}" >> $GITHUB_ENV
-   
+          git clone -b release/${{ matrix.idf_ver }} --recursive https://github.com/espressif/esp-idf.git ~/esp-idf
+          ~/esp-idf/install.sh
+
+      - name: Build firmware
+        run: |
+          . ~/esp-idf/export.sh
+          idf.py set-target ${{ matrix.target }}
+          idf.py build
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: squeezelite-${{ matrix.target }}-${{ matrix.flash }}-${{ matrix.partition }}
+          path: build/*.bin
