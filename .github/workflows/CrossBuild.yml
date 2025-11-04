@@ -5,53 +5,36 @@ on:
 
 jobs:
   build:
+    name: Build Squeezelite-ESP32
     runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        idf_ver: [v4.4.4]
-        target: [esp32s3]
-        flash: [4MFlash]
-        partition: [16]
-
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/checkout@v3
         with:
-          python-version: '3.11'
+          submodules: true
 
-      - name: Cache pip
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-
-      - name: Cache ESP-IDF
-        uses: actions/cache@v4
-        with:
-          path: ~/.espressif
-          key: ${{ runner.os }}-espidf-${{ matrix.idf_ver }}
-          restore-keys: |
-            ${{ runner.os }}-espidf-
-
-      - name: Install ESP-IDF
+      - name: Set build environment
         run: |
-          git clone -b release/${{ matrix.idf_ver }} --recursive https://github.com/espressif/esp-idf.git ~/esp-idf
-          ~/esp-idf/install.sh
+          echo "TARGET_BUILD_NAME=Squeezelite-S3" >> $GITHUB_ENV
+          echo "BUILD_NUMBER=1" >> $GITHUB_ENV
+          echo "DEPTH=16" >> $GITHUB_ENV
+
+      - name: Pull ESP-IDF Docker
+        run: docker pull sle118/idf:release-v4.4
 
       - name: Build firmware
         run: |
-          . ~/esp-idf/export.sh
-          idf.py set-target ${{ matrix.target }}
-          idf.py build
+          echo "TARGET_BUILD_NAME=${TARGET_BUILD_NAME}" > build-env.txt
+          docker run --rm -v $PWD:/project -w /project --env-file build-env.txt sle118/idf:release-v4.4 /bin/bash -c "
+            cp build-scripts/Squeezelite-S3-sdkconfig.defaults sdkconfig || true
+            idf.py build -DDEPTH=${DEPTH} -DBUILD_NUMBER=${BUILD_NUMBER}
+          "
 
-      - name: Upload artifacts
+      - name: Upload firmware artifact
         uses: actions/upload-artifact@v4
         with:
-          name: squeezelite-${{ matrix.target }}-${{ matrix.flash }}-${{ matrix.partition }}
-          path: build/*.bin
+          name: squeezelite-esp32s3
+          path: |
+            build/squeezelite.bin
+            build/bootloader/bootloader.bin
+            build/partition_table/partition-table.bin
